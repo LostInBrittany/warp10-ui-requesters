@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, minimum-scale=1, initial-scale=1, user-scalable=yes">
+
+    <title>warp10-ui-empty demo</title>
+
+    <script src="../../webcomponentsjs/webcomponents-lite.js"></script>
+
+    <link rel="import" href="../../iron-demo-helpers/demo-pages-shared-styles.html">
+    <link rel="import" href="../../iron-demo-helpers/demo-snippet.html">
+    <link rel="import" href="../warp10-ui-warpscript-caller.html">
+
+    <custom-style>
+      <style is="custom-style" include="demo-pages-shared-styles">
+      </style>
+    </custom-style>
+  </head>
+  <body>
+
+    <div class="vertical-section-container centered">
+      <h3>Basic warp10-ui-warpscript-caller demo</h3>
+      <demo-snippet>
+        <template>
+          <dom-module id="test-warp10-ui-warpscript-caller">
+            <template>
+              Last response: [[stringify(lastResponse)]]
+              <warp10-ui-warpscript-caller
+                  url="https://warp.cityzendata.net/api/v0/exec"
+                  warpscript="NOW"
+                  reload="10"
+                  last-response="{{lastResponse}}"
+                  auto debug></warp10-ui-warpscript-caller>
+            </template>
+            <script>
+              class TestWarp10UiWarpscriptCaller extends Polymer.Element {
+                static get is() {
+                  return 'test-warp10-ui-warpscript-caller'
+                }
+
+                static get properties() {
+                  return {
+                    lastResponse: {
+                      type: Object,
+                    }
+                  };
+                }
+
+                stringify(obj) {
+                  return JSON.stringify(obj);
+                }
+              }
+              window.customElements.define(TestWarp10UiWarpscriptCaller.is, TestWarp10UiWarpscriptCaller);
+            </script>
+          </dom-module>
+          <test-warp10-ui-warpscript-caller></test-warp10-ui-warpscript-caller>
+        </template>
+      </demo-snippet>
+    </div>
+
+
+
+
+  </body>
+</html>

@@ -1,0 +1,348 @@
+<!--
+@author Horacio Gonzalez (@lostinbrittany)
+@copyright (c) 2016 Cityzen Data
+@license Apache 2.0
+-->
+<link rel="import" href="../polymer/polymer-element.html">
+
+<!-- import debounce module -->
+<link rel="import" href="../polymer/lib/utils/debounce.html">
+
+<!-- import async module -->
+<link rel="import" href="../polymer/lib/utils/async.html">
+
+<link rel="import" href=" ../iron-ajax/iron-ajax.html">
+
+<link rel="import" href="../warp10-ui-tools/warp10-ui-looseJSON.html">
+
+
+<dom-module id="warp10-ui-warpscript-caller">
+  <template>
+    <style>
+      :host {
+        display: none;
+      }
+    </style>
+
+    <iron-ajax 
+        id="xhr" url="[[url]]" method='POST' 
+        content-type="application/x-www-form-urlencoded; charset=UTF-8" 
+        body='[[warpscript]]' loading="{{loading}}" 
+        handle-as="text" on-response="_handleResponse" on-error="_handleError"  
+        debounce-duration="[[debounceDuration]]"></iron-ajax>
+
+  </template>
+
+  <script>
+    /**
+     * `warp10-ui-warpscript-caller.html`
+     * Polymer 2.x Web Component to call Warp 10 instances
+     *
+     * @customElement
+     * @polymer
+     * @demo demo/index.html
+     */
+    class Warp10UiWarpscriptCaller extends Polymer.Element {
+
+      static get is() { return 'warp10-ui-warpscript-caller'; }
+
+
+      /**
+       * Fired when a request is sent.
+       *
+       * @event request
+       */
+
+      /**
+       * Fired when a response is received.
+       *
+       * @event response
+       */
+
+      /**
+       * Fired when an error is received.
+       *
+       * @event error
+       */
+
+
+      static get properties() {
+        return {
+
+          /**
+           * URL of WarpScript platform
+           */
+          url: {
+            type: String,
+            value: ""
+          },
+
+          /**
+           * WarpScript script to execute
+           */
+          warpscript: {
+            type: String,
+            value: ""
+          },
+
+          /**
+           * If `reload > 0` it's the number of seconds between two calls
+           * to the WarpScript server
+           */
+          reload: {
+            type: Number,
+            value: -1
+          },
+
+          /**
+           * If true, automatically performs an Ajax request when either `url` or
+           * `warpscript` changes.
+           */
+          auto: {
+            type: Boolean,
+            value: false
+          },
+
+          /**
+           * Boolean to indicate loading in progress
+           */
+          loading: {
+            type: Boolean,
+            value: false,
+            notify: true
+          },
+
+          /**
+           * The most recent request made by this iron-ajax element.
+           */
+          lastRequest: {
+            type: Object,
+            notify: true,
+            readOnly: true
+          },
+
+          /**
+           * lastRequest's response.
+           *
+           * Note that lastResponse and lastError are set when lastRequest finishes,
+           * so if loading is true, then lastResponse and lastError will correspond
+           * to the result of the previous request.       *
+           *
+           * @type {Object}
+           */
+          lastResponse: {
+            type: Object,
+            notify: true,
+            readOnly: true
+          },
+
+          /**
+           * lastRequest's error, if any.
+           *
+           * @type {Object}
+           */
+          lastError: {
+            type: Object,
+            notify: true,
+            readOnly: true
+          },
+
+          /**
+           * Length of time in milliseconds to debounce multiple automatically generated requests.
+           */
+          debounceDuration: {
+            type: Number,
+            value: 0,
+            notify: true
+          },    
+
+          /**
+           * If true, the element is set in debug mode, writing detailed logs to the console
+           */
+          debug: {
+            type: Boolean,
+            value: false
+          },
+
+          _conected: {
+            type: Boolean,
+            value: false
+          }     
+        };
+      }
+
+      static get observers() {
+        return [
+          '_optionsChanged(url, warpscript, reload, auto, _connected)'
+        ];
+      }
+
+      // ------------------------------------------------------------------------------------------
+      // Lifecycle
+      // ------------------------------------------------------------------------------------------
+
+      connectedCallback() {
+        super.connectedCallback();                
+        this._connected = true;
+      }
+
+      disconnectedCallback() {
+        if (this._timeoutId) {
+          this.cancelAsync(this._timeoutId);
+        }
+        super.disconnectedCallback();
+      }
+
+
+      // ------------------------------------------------------------------------------------------
+      // Observers
+      // ------------------------------------------------------------------------------------------
+
+      /**
+       * Observes if input options changed. As multiple properties are often quickly changed sequentially, 
+       * we want to wait a debouce time before acting
+       */ 
+      _optionsChanged() {
+        if (!this._connected) { return; }
+        if (this.debug) { console.log("[warp10-ui-warpscript-caller] _optionsChanged", this.url, this.warpscript, this.auto ); }
+        this._optionsDebouncer = Polymer.Debouncer.debounce(
+          this._optionsDebouncer, 
+          Polymer.Async.timeOut.after(this.debounceDuration),
+          () => {
+            if ((this.url == null) || (this.warpscript === undefined) || (this.warpscript.length <= 0)) {
+              return;
+            }
+            if (this.auto) {
+              this.generateRequest();
+            }
+          }
+        );
+      }     
+
+      // ------------------------------------------------------------------------------------------
+      // Event listeners
+      // ------------------------------------------------------------------------------------------
+
+      _handleResponse(event, ironRequest) {
+        event.stopPropagation();
+        let elapsed = this._getElapsed(ironRequest);
+        let fetched = this._getFetched(ironRequest);
+        let operations = this._getOperations(ironRequest);
+        let stack = looseJSON.parse(ironRequest.response);
+        let response = {
+          stack: stack,
+          options: {
+            elapsed: elapsed,
+            fetched: fetched,
+            operations: operations
+          }
+        };
+        this._setLastResponse(response);
+        if (this.debug) { console.log("[warp10-ui-warpscript-caller] _handleResponse", response); }
+        this.dispatchEvent(new CustomEvent('response', { bubbles: false, composed: true, detail: response }));
+      }
+
+      _handleError(event, error) {
+        error.elapsed = this._getElapsed(error.request);
+        error.fetched = this._getFetched(error.request);
+        error.operations = this._getOperations(error.request);
+        error.errorLine = this._getErrorLine(error.request);
+        error.errorMsg = this._getErrorMsg(error.request);
+        if (this.debug) { console.log("[warp10-ui-warpscript-caller] _handleError", error); }
+        this.dispatchEvent(new CustomEvent('error', { bubbles: false, composed: true, detail: error }));
+      }
+
+
+      // ------------------------------------------------------------------------------------------
+      // Instance methods
+      // ------------------------------------------------------------------------------------------
+
+      /**
+       * Performs an AJAX request to the specified URL with the WarpScript payload
+       */
+      generateRequest() {
+        if (this.debug) { console.log("[warp10-ui-warpscript-caller] generateRequest - WarpScript script", this.warpscript); }
+        clearTimeout(this._timeoutId);
+        if (this.reload > 0) {
+          // If `reload > 0` set reloading interval and call, else call directly
+          this._reloadInterval = parseFloat(this.reload) * 1000;
+          if (this.debug) { console.debug("[warp10-ui-warpscript-caller] generateRequest - Reload interval in ms", this._reloadInterval); }
+          this._doCallWithReload();
+        } else {
+          this._doCall();
+        }
+      }
+
+      _doCall() {
+        if (this.debug) { console.log("[warp10-ui-warpscript-caller] doCall - Calling with WarpScript script", this.$, this, this.warpscript); }
+        this.lastRequest = this.$.xhr.generateRequest();
+      }
+
+      _doCallWithReload() {
+        if (this.debug) { console.log("[warp10-ui-warpscript-caller] _doCallWithReload called with interval " + this._reloadInterval + " ms"); }
+        this._doCall();        
+        this._timeoutId = setTimeout(() => this._doCallWithReload(), this._reloadInterval);
+      }     
+
+      _getHeaders(ironRequest) {
+        let headers = ironRequest.xhr.getAllResponseHeaders().split('\n').map(function(i) {
+          return i.split(':')[0].trim();
+        });
+        if (this.debug) { console.log("[warp10-ui-warpscript-caller] _getHeaders", headers); }
+        return headers;
+      }
+
+      _getElapsed(ironRequest) {
+        let elapsedHeader = "X-Warp10-Elapsed";
+        this._getHeaders(ironRequest).forEach( header => {
+          if (header.match('-Elapsed')) {
+            elapsedHeader = header;
+          }
+        }); 
+        return ironRequest.xhr.getResponseHeader(elapsedHeader);
+      }
+
+      _getFetched(ironRequest) {
+        let fetchedHeader = "X-Warp10-Fetched";
+        this._getHeaders(ironRequest).forEach( header => {
+          if (header.match('-Fetched')) {
+            fetchedHeader = header;
+          }
+        }); 
+        return ironRequest.xhr.getResponseHeader(fetchedHeader);
+      }
+
+      _getOperations(ironRequest) {
+        let opsHeader = "X-Warp10-Ops";
+        this._getHeaders(ironRequest).forEach( header => {
+          if (header.match('-Ops')) {
+            opsHeader = header;
+          }
+        }); 
+        return ironRequest.xhr.getResponseHeader(opsHeader);
+      }
+
+      _getErrorLine(ironRequest) {
+        let errorHeader = "X-Warp10-Error-Line";
+        this._getHeaders(ironRequest).forEach( header => {
+          if (header.match('-Error-Line')) {
+            errorHeader = header;
+          }
+        }); 
+        return ironRequest.xhr.getResponseHeader(errorHeader);
+      }
+
+      _getErrorMsg(ironRequest) {
+        let errorHeader = "X-Warp10-Error-Message";
+        this._getHeaders(ironRequest).forEach( header => {
+          if (header.match('-Error-Message')) {
+            errorHeader = header;
+          }
+        }); 
+        return ironRequest.xhr.getResponseHeader(errorHeader);
+      }      
+    }
+
+    window.customElements.define(Warp10UiWarpscriptCaller.is, Warp10UiWarpscriptCaller);
+  </script>
+</dom-module>
