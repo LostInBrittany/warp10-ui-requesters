@@ -1,0 +1,315 @@
+<!--
+@author Horacio Gonzalez (@lostinbrittany)
+@copyright (c) 2017 Cityzen Data
+@license Apache 2.0
+-->
+<link rel="import" href="../polymer/polymer-element.html">
+
+
+
+<script>
+  (function () {
+
+
+    /*
+    // TypeScript definitions of the structures
+    interface subscribers {
+      [proxy: String]: warp10-warpscript-request-gatherer[]
+    }
+    interface proxifiedWarpscript {
+      [proxy: String]:  String
+    }
+    */
+    let subscribers = {};
+    let proxifiedWarpscript = {};
+
+
+    /**
+     * Concatenates all the Warpscript calls from all the attached instance sharing the same calling interval \
+     * in a coherent Warpscript script and then sends an event for the warpscript proxy
+     */
+    function generateWarpscript(proxy) {
+      let warpscript = `
+        {} '__result' STORE 
+        <% '__name' STORE DEPTH ->LIST '__stack' STORE $__result $__stack $__name PUT '__name' STORE %> '__stack2map' STORE
+        `;
+      let beginMacro = `
+        <%
+          SAVE '__context' STORE
+        `;
+      let endMacro = `\
+          $__context RESTORE
+        %> `;
+      console.debug(`[warp10-ui-warpscript-gatherer] generateWarpscript - subscribers[${proxy}]`,subscribers[proxy] );
+      for (let i in subscribers[proxy]) {
+        let s = subscribers[proxy][i];
+        let name = s.name + "_" + i;
+        warpscript += `${beginMacro} ${s.warpscript} ${endMacro}
+          '${name}' STORE
+          @${name} '${name}' @__stack2map
+          `;
+      }
+      warpscript += `$__result`;
+      // console.debug("[warp10-ui-warpscript-gatherer] generateWarpscript - warpscript", warpscript);
+      if (!proxifiedWarpscript[proxy]) {
+        proxifiedWarpscript[proxy] = {};
+      }
+      proxifiedWarpscript[proxy] = warpscript;
+      console.debug("[warp10-ui-warpscript-gatherer] generateWarpscript - proxifiedWarpscript", proxifiedWarpscript);
+
+      let event = new CustomEvent("request-gathered-for-" + proxy, {
+        detail: {
+          proxy: proxy,
+          warpscript: warpscript
+        }
+      });
+      console.debug("[warp10-ui-warpscript-gatherer] generateWarpscript - event", event);
+
+      document.dispatchEvent(event);
+    };
+
+    /**
+     * Event listener function called when a response is receiver. It sends an response event to every
+     * attached instance sharing the interval
+     */
+    function requestGathererResponse(evt) {
+      if (!evt.detail || !evt.detail.response || !evt.detail.response.stack || !evt.detail.response.stack[0]) {
+        return;
+      }
+      console.debug("[warp10-ui-warpscript-gatherer] requestGathererResponse", { proxy: evt.detail.proxy, response: evt.detail.response });
+
+      for (let i in subscribers[evt.detail.proxy]) {
+        let s = subscribers[evt.detail.proxy][i];
+        let name = `${s.name}_${i}`;
+        let event = new CustomEvent("response", {
+          detail: evt.detail.response.stack[0][name]
+        });
+        // console.debug("[warp10-ui-warpscript-gatherer] requestGathererResponse", event.detail);
+        s.dispatchEvent(event);
+      }
+    };
+
+    // Event listener
+    document.addEventListener("warpscript-request-gatherer-response", requestGathererResponse);
+
+
+
+    /**
+      * `warp10-ui-warpscript-gatherer.html`
+      * Polymer 2.x Web Component that gather warpscript scripts and send it to a grouped warpscript caller
+      *
+      * @customElement
+      * @polymer
+      * @demo demo/demo-gatherer.html
+      */
+    class Warp10UiWarpscriptGatherer extends Polymer.Element {
+
+      static get is() { return 'warp10-ui-warpscript-gatherer'; }
+
+
+      /**
+       * Fired when a request is sent.
+       *
+       * @event request
+       */
+
+      /**
+       * Fired when a response is received.
+       *
+       * @event response
+       */
+
+      /**
+       * Fired when an error is received.
+       *
+       * @event error
+       */
+
+
+      static get properties() {
+        return {
+
+          /**
+           *  The name of the proxy used for this warpscript
+           */
+          proxy: {
+            type: String,
+            value: "warpscript-http-proxy",
+            observer: "proxyChanged"
+          },
+
+          /**
+           * The name  of the element using this instance de proxy
+           */
+          name: {
+            type: String,
+            value: "",
+          },
+
+          /**
+           * WarpScript script to execute
+           */
+          warpscript: {
+            type: String,
+            value: ""
+          },
+
+          /**
+           * If true, automatically sends a new request to the grouper as
+           * `warpscript` changes.
+           */
+          auto: {
+            type: Boolean,
+            value: false
+          },
+
+          /**
+           * Boolean to indicate loading in progress
+           */
+          loading: {
+            type: Boolean,
+            value: false,
+            notify: true
+          },
+
+          /**
+           * The most recent request made by this iron-ajax element.
+           */
+          lastRequest: {
+            type: Object,
+            notify: true,
+            readOnly: true
+          },
+
+          /**
+           * lastRequest's response.
+           *
+           * Note that lastResponse and lastError are set when lastRequest finishes,
+           * so if loading is true, then lastResponse and lastError will correspond
+           * to the result of the previous request.       *
+           *
+           * @type {Object}
+        */
+          lastResponse: {
+            type: Object,
+            notify: true,
+            readOnly: true
+          },
+
+          /**
+           * lastRequest's error, if any.
+           *
+           * @type {Object}
+        */
+          lastError: {
+            type: Object,
+            notify: true,
+            readOnly: true
+          },
+
+          /**
+           * Length of time in milliseconds to debounce multiple automatically generated requests.
+           */
+          debounceDuration: {
+            type: Number,
+            value: 0,
+            notify: true
+          },
+
+          /**
+           * If true, the element is set in debug mode, writing detailed logs to the console
+           */
+          debug: {
+            type: Boolean,
+            value: false
+          },
+
+          _conected: {
+            type: Boolean,
+            value: false
+          }
+        };
+      }
+
+      static get observers() {
+        return [
+          "paramsChanged(name, warpscript)"
+        ]
+      }
+
+      // ------------------------------------------------------------------------------------------
+      // Observers
+      // ------------------------------------------------------------------------------------------
+
+      proxyChanged(newProxy, oldProxy) {
+        if (!this._connected) {
+          return;
+        }
+        console.debug("[warp10-ui-warpscript-gatherer] proxyChanged - new: ", newProxy, ", old: " + oldProxy);
+        this.unregister(oldProxy);
+        this.register(newProxy);
+        generateWarpscript(newProxy);
+      }
+
+      paramsChanged() {
+        if (!this._connected) {
+          return;
+        }
+        console.debug("[warp10-ui-warpscript-gatherer] paramsChanged", this.name);
+        generateWarpscript(this.proxy);
+      }
+
+     
+      // ------------------------------------------------------------------------------------------
+      // Lifecycle
+      // ------------------------------------------------------------------------------------------
+
+      connectedCallback() {
+        super.connectedCallback();
+        console.debug("[warp10-ui-warpscript-gatherer] connectedCallback", this.name, this.proxy);
+        this.register(this.proxy);
+        generateWarpscript(this.proxy);
+        this._connected = true;
+      }
+
+      disconnectedCallback() {
+        this._connected = false;
+        this.unregister(this.proxy);
+        super.disconnectedCallback();
+      }
+
+
+      // ------------------------------------------------------------------------------------------
+      // Instance methods
+      // ------------------------------------------------------------------------------------------
+
+      register(proxy) {
+        if (!subscribers[proxy]) {
+          subscribers[proxy] = [];
+        }
+        if (subscribers[proxy].indexOf(this) < 0) {
+          console.debug("[warp10-ui-warpscript-gatherer] register - Registering instance", this, this.name, this.proxy);
+          subscribers[proxy].push(this);
+        } else {
+          console.warn("[warp10-ui-warpscript-gatherer] register - Instance already registered", this, this.name, this.proxy);
+        }
+      }
+
+      unregister(proxy) {
+        if (!subscribers[proxy] ) {
+          return;
+        }
+        let i = subscribers[proxy].indexOf(this);
+        if (i >= 0) {
+          console.debug("[warp10-ui-warpscript-gatherer] unregister - Unregistering instance", this,  this.name, this.proxy);
+          subscribers[proxy].splice(i, 1);
+        }
+      }
+
+
+    }
+
+    window.customElements.define(Warp10UiWarpscriptGatherer.is, Warp10UiWarpscriptGatherer);
+  })();
+
+</script>

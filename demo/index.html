@@ -1,66 +1,134 @@
 <!doctype html>
 <html lang="en">
-  <head>
-    <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, minimum-scale=1, initial-scale=1, user-scalable=yes">
 
-    <title>warp10-ui-empty demo</title>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, minimum-scale=1, initial-scale=1, user-scalable=yes">
 
-    <script src="../../webcomponentsjs/webcomponents-lite.js"></script>
+  <title>warp10-ui-empty demo</title>
 
-    <link rel="import" href="../../iron-demo-helpers/demo-pages-shared-styles.html">
-    <link rel="import" href="../../iron-demo-helpers/demo-snippet.html">
-    <link rel="import" href="../warp10-ui-warpscript-caller.html">
+  <script src="../../webcomponentsjs/webcomponents-lite.js"></script>
 
-    <custom-style>
-      <style is="custom-style" include="demo-pages-shared-styles">
-      </style>
-    </custom-style>
-  </head>
-  <body>
+  <link rel="import" href="../../iron-demo-helpers/demo-pages-shared-styles.html">
+  <link rel="import" href="../../iron-demo-helpers/demo-snippet.html">
+  <link rel="import" href="../warp10-ui-warpscript-caller.html">
+  <link rel="import" href="../warp10-ui-warpscript-http-proxy.html">
+  <link rel="import" href="../warp10-ui-warpscript-gatherer.html">
 
-    <div class="vertical-section-container centered">
-      <h3>Basic warp10-ui-warpscript-caller demo</h3>
+  <custom-style>
+    <style is="custom-style" include="demo-pages-shared-styles">
+
+    </style>
+  </custom-style>
+</head>
+
+<body>
+
+  <div class="vertical-section-container centered">
+    <h3>Basic warp10-ui-warpscript-caller demo</h3>
+    <demo-snippet>
+      <template>
+        <dom-module id="test-warp10-ui-warpscript-caller">
+          <template>
+            Last response: [[stringify(lastResponse)]]
+            <warp10-ui-warpscript-caller url="https://warp.cityzendata.net/api/v0/exec" warpscript="NOW" reload="10" last-response="{{lastResponse}}"
+              auto debug></warp10-ui-warpscript-caller>
+          </template>
+          <script>
+            class TestWarp10UiWarpscriptCaller extends Polymer.Element {
+              static get is() {
+                return 'test-warp10-ui-warpscript-caller'
+              }
+
+              static get properties() {
+                return {
+                  lastResponse: {
+                    type: Object,
+                  }
+                };
+              }
+
+              stringify(obj) {
+                return JSON.stringify(obj);
+              }
+            }
+            window.customElements.define(TestWarp10UiWarpscriptCaller.is, TestWarp10UiWarpscriptCaller);
+          </script>
+        </dom-module>
+        <test-warp10-ui-warpscript-caller></test-warp10-ui-warpscript-caller>
+      </template>
+    </demo-snippet>
+  </div>
+
+
+  <div class="vertical-section-container centered">
+      <h3>Basic warp10-ui-warpscript-gatherer and warp10-ui-warpscript-http-proxy demo</h3>
       <demo-snippet>
         <template>
-          <dom-module id="test-warp10-ui-warpscript-caller">
+  
+          <dom-module id="example-container">
             <template>
-              Last response: [[stringify(lastResponse)]]
-              <warp10-ui-warpscript-caller
-                  url="https://warp.cityzendata.net/api/v0/exec"
-                  warpscript="NOW"
-                  reload="10"
-                  last-response="{{lastResponse}}"
-                  auto debug></warp10-ui-warpscript-caller>
+              <warp10-ui-warpscript-gatherer 
+                  name="[[name]]" 
+                  proxy="test-proxy" 
+                  warpscript="[[warpscript]]" 
+                  interval="[[interval]]"
+                  on-response="_handleResponse" 
+                  debug></warp10-ui-warpscript-gatherer>
+  
             </template>
             <script>
-              class TestWarp10UiWarpscriptCaller extends Polymer.Element {
+              class ExampleContainer extends Polymer.Element {
                 static get is() {
-                  return 'test-warp10-ui-warpscript-caller'
+                  return 'example-container'
                 }
-
                 static get properties() {
                   return {
-                    lastResponse: {
-                      type: Object,
-                    }
-                  };
+                    name: String,
+                    warpscript: String,
+                  }
                 }
-
-                stringify(obj) {
-                  return JSON.stringify(obj);
+                _handleResponse(evt, response) {
+                    console.debug("[example-container] _handleResponse - name", this.name, "response", response);
                 }
               }
-              window.customElements.define(TestWarp10UiWarpscriptCaller.is, TestWarp10UiWarpscriptCaller);
+              window.customElements.define(ExampleContainer.is, ExampleContainer);
             </script>
           </dom-module>
-          <test-warp10-ui-warpscript-caller></test-warp10-ui-warpscript-caller>
+  
+  
+          <dom-module id="test-warp10-ui-warpscript-gatherer">
+            <template>
+  
+              <warp10-ui-warpscript-http-proxy
+                  name="test-proxy"
+                  presets="'Testing presets' 'preset' STORE NOW NOW"
+                  url="https://warp.cityzendata.net/api/v0/exec"
+                  interval="5" 
+                  debug></warp10-ui-warpscript-http-proxy>
+            
+              <example-container name="test01" warpscript="NOW 'now' STORE $now"></example-container>
+            
+              <example-container name="test02" warpscript="$preset" ></example-container>
+            
+              <example-container name="test03" warpscript="42 'now' CSTORE $now" ></example-container>
+  
+            </template>
+            <script>
+              class TestWarp10UiWarpscriptGatherer extends Polymer.Element {
+                static get is() {
+                  return 'test-warp10-ui-warpscript-gatherer'
+                }
+              }
+              window.customElements.define(TestWarp10UiWarpscriptGatherer.is, TestWarp10UiWarpscriptGatherer);
+            </script>
+          </dom-module>
+  
+          <test-warp10-ui-warpscript-gatherer></test-warp10-ui-warpscript-gatherer>
+        
         </template>
       </demo-snippet>
     </div>
+</body>
 
-
-
-
-  </body>
 </html>

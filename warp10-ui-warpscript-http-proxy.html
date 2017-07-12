@@ -1,0 +1,169 @@
+<!--
+@author Horacio Gonzalez (@lostinbrittany)
+@copyright (c) 2017 Cityzen Data
+@license Apache 2.0
+-->
+<link rel="import" href="../polymer/polymer-element.html">
+
+<link rel="import" href="./warp10-ui-warpscript-caller.html">
+
+
+<dom-module id="warp10-ui-warpscript-http-proxy">
+
+  <template>
+    <style>
+       :host {
+        display: none;
+      }
+    </style>
+
+    <warp10-ui-warpscript-caller url="[[url]]" warpscript="[[_warpscript]]" reload="[[interval]]" on-response="_handleResponse"
+      auto></warp10-ui-warpscript-caller>
+  </template>
+  <script>
+    /**
+     * `warp10-ui-warpscript-http-proxy`
+     * 
+     *
+     * @customElement
+     * @polymer
+     */
+    class Warp10UiWarpscriptHttpProxy extends Polymer.Element {
+      static get is() { return 'warp10-ui-warpscript-http-proxy'; }
+      static get properties() {
+        return {
+
+          /**
+           * The name of this instance of `warp10-warpscript-http-proxy`
+           */
+          name: {
+            type: String,
+            value: "warpscript-http-proxy",
+            observer: "_nameChanged"
+          },
+
+          /**
+          * URL of WarpScript platform
+          */
+          url: {
+            type: String,
+            value: ""
+          },
+
+          /**
+          * WarpScript script to execute
+          */
+          warpscript: {
+            type: String,
+            value: ""
+          },
+
+          /**
+          * If `interval`  > 0` it's the number of seconds between two calls
+          * to the WarpScript server.
+          */
+          interval: {
+            type: Number,
+            value: 0,
+          },
+
+          /**
+          * Presets to pre-append to the scripts
+          */
+          presets: {
+            type: String,
+            value: "",
+          },
+
+          /**
+           * If true, the element is set in debug mode, writing detailed logs to the console
+           */
+          debug: {
+            type: Boolean,
+            value: false
+          },
+
+          evtListener: {
+            type: Function
+          },
+
+          _warpscript: {
+            type: String,
+            computed: "_appendPresets(warpscript,presets)"
+          },
+        };
+      }
+
+
+      // ------------------------------------------------------------------------------------------
+      // Observers
+      // ------------------------------------------------------------------------------------------
+
+      _nameChanged(oldName, newName) {
+        this.unregister(oldName);
+        this.register(name);
+      }
+
+      // ------------------------------------------------------------------------------------------
+      // Lifecycle
+      // ------------------------------------------------------------------------------------------
+
+      connectedCallback() {
+        super.connectedCallback();
+        this.register(this.name);
+        this._connected = true;
+      }
+
+      disconnectedCallback() {
+        this.unregister(this.name);
+        if (this._timeoutId) {
+          this.cancelAsync(this._timeoutId);
+        }
+        super.disconnectedCallback();
+      }
+
+      // ------------------------------------------------------------------------------------------
+      // Event listeners
+      // ------------------------------------------------------------------------------------------
+      _handleResponse(evt, response) {
+        let event = new CustomEvent("warpscript-request-gatherer-response", {
+          detail: {
+            proxy: this.name,
+            interval: this.interval,
+            response: response
+          }
+        });
+        if (this.debug) { console.log("[warp10-ui-warpscript-http-proxy] - _handleResponse", event); }
+        document.dispatchEvent(event);
+      }
+
+
+      // ------------------------------------------------------------------------------------------
+      // Instance methods
+      // ------------------------------------------------------------------------------------------
+
+      _appendPresets() {
+        return this.presets + "\n CLEAR \n" + this.warpscript;
+      }
+
+      register(name) {
+        if (!this.evtListener) {
+          this.evtListener = evt => {
+            if (this.debug) { console.log("[warp10-ui-warpscript-http-proxy] evtListener", evt, evt.detail.interval, this.interval); }
+            this.warpscript = evt.detail.warpscript;
+          }
+        }
+        console.log("[warp10-ui-warpscript-http-proxy] register - event listener", name, "request-gathered-for-" + name, this.evtListener)
+        document.addEventListener("request-gathered-for-" + name, this.evtListener);
+      }
+
+      unregister(name) {
+        document.removeEventListener("request-gathered-for-" + name, this.evtListener);
+      }
+
+
+    }
+
+    window.customElements.define(Warp10UiWarpscriptHttpProxy.is, Warp10UiWarpscriptHttpProxy);
+  </script>
+</dom-module>
